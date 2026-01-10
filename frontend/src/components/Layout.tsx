@@ -1,16 +1,17 @@
 import { ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FileText, MessageSquare, Settings, Network, Users } from 'lucide-react';
+import { FileText, MessageSquare, Settings, Network, Users, Home } from 'lucide-react';
 
 interface LayoutProps {
   children: ReactNode;
 }
 
 const navItems = [
+  { to: '/', label: 'Home', icon: Home },
   { to: '/search', label: 'Search Papers', icon: FileText },
   { to: '/researchers', label: 'Researchers', icon: Users },
-  { to: '/', label: 'Query', icon: MessageSquare },
+  { to: '/query', label: 'Query', icon: MessageSquare },
   { to: '/graph', label: 'Graph', icon: Network },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
@@ -23,10 +24,12 @@ const Layout = ({ children }: LayoutProps) => {
       {/* Sidebar */}
       <aside className="w-64 border-r border-border flex flex-col">
         {/* Logo */}
-        <div className="p-6 border-b border-border">
-          <h1 className="text-xl font-semibold tracking-tight">ScholarGraph</h1>
-          <p className="text-xs text-muted-foreground mt-1">Academic Discovery</p>
-        </div>
+        <NavLink to="/">
+          <div className="p-6 border-b border-border">
+            <h1 className="text-xl font-semibold tracking-tight">ScholarGraph</h1>
+            <p className="text-xs text-muted-foreground mt-1">Academic Discovery</p>
+          </div>
+        </NavLink>
 
         {/* Navigation */}
         <nav className="flex-1 p-4">
