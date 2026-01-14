@@ -1,8 +1,8 @@
+import BrainAnalysisDashboard from './BrainAnalysisDashboard';
+
 const Home = () => {
   return (
-    <div>
-      {/* This is the empty homepage. */}
-    </div>
+    <BrainAnalysisDashboard />
   );
 };
 
