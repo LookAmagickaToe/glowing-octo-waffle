@@ -4,12 +4,13 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Layout from "./components/Layout";
-import Home from "./pages/Home";
+import Dashboard from "./pages/Dashboard";
 import Query from "./pages/Query";
 import Settings from "./pages/Settings";
 import Graph from "./pages/Graph";
 import SearchPapers from "./pages/SearchPapers";
 import Researchers from "./pages/Researchers";
+import TotalRevenue from "./pages/TotalRevenue";
 import NotFound from "./pages/NotFound";
 import { SearchProvider } from "./contexts/SearchContext";
 import { QueryProvider } from "./contexts/QueryContext";
@@ -32,12 +33,13 @@ const App = () => (
                 <ResearchersProvider>
                   <Layout>
                     <Routes>
-                      <Route path="/" element={<Home />} />
+                      <Route path="/" element={<Dashboard />} />
                       <Route path="/query" element={<Query />} />
                       <Route path="/search" element={<SearchPapers />} />
                       <Route path="/researchers" element={<Researchers />} />
                       <Route path="/settings" element={<Settings />} />
                       <Route path="/graph" element={<Graph />} />
+                      <Route path="/total-revenue" element={<TotalRevenue />} />
                       <Route path="*" element={<NotFound />} />
                     </Routes>
                   </Layout>
