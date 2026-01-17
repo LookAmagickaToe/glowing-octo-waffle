@@ -26,7 +26,14 @@ const Layout = ({ children }: LayoutProps) => {
         {/* Logo */}
         <NavLink to="/">
           <div className="p-6 border-b border-border">
-            <h1 className="text-xl font-semibold tracking-tight">ScholarGraph</h1>
+            <div className="flex items-center gap-3">
+              <img
+                src="/waffle-icon.svg"
+                alt="Waffles"
+                className="w-10 h-10"
+              />
+              <h1 className="text-xl font-semibold tracking-tight">Waffles</h1>
+            </div>
             <p className="text-xs text-muted-foreground mt-1">Academic Discovery</p>
           </div>
         </NavLink>
