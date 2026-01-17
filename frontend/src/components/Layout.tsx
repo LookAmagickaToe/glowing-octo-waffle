@@ -32,7 +32,7 @@ const Layout = ({ children }: LayoutProps) => {
                 alt="Waffles"
                 className="w-10 h-10"
               />
-              <h1 className="text-xl font-semibold tracking-tight">Waffles</h1>
+              <h1 className="text-4xl font-semibold tracking-tight">Waffles</h1>
             </div>
             <p className="text-xs text-muted-foreground mt-1">Academic Discovery</p>
           </div>
