@@ -31,6 +31,9 @@ cp -r functions/shared/token_manager.py functions/gmail-api/token_manager.py
 # Environment variables to pass to all functions
 ENV_VARS="PROJECT_ID=$PROJECT_ID,GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET"
 
+# Environment variables for Perplexity function
+PERPLEXITY_ENV_VARS="PERPLEXITY_API_KEY=$PERPLEXITY_API_KEY"
+
 # Deploy OAuth functions
 echo "Deploying gmail-auth-init..."
 gcloud functions deploy gmail-auth-init \
@@ -165,6 +168,19 @@ gcloud functions deploy gmail-modify \
     --set-env-vars=$ENV_VARS \
     --project=$PROJECT_ID
 
+# Deploy Perplexity enrichment function
+echo "Deploying perplexity-enrich..."
+gcloud functions deploy perplexity-enrich \
+    --gen2 \
+    --runtime=python311 \
+    --region=$REGION \
+    --source=functions/perplexity-enrich \
+    --entry-point=perplexity_enrich \
+    --trigger-http \
+    --allow-unauthenticated \
+    --set-env-vars=$PERPLEXITY_ENV_VARS \
+    --project=$PROJECT_ID
+
 # Cleanup copied files
 rm functions/gmail-auth/token_manager.py
 rm functions/gmail-api/token_manager.py
@@ -184,3 +200,4 @@ echo "  https://$REGION-$PROJECT_ID.cloudfunctions.net/gmail-labels"
 echo "  https://$REGION-$PROJECT_ID.cloudfunctions.net/gmail-drafts"
 echo "  https://$REGION-$PROJECT_ID.cloudfunctions.net/gmail-draft"
 echo "  https://$REGION-$PROJECT_ID.cloudfunctions.net/gmail-modify"
+echo "  https://$REGION-$PROJECT_ID.cloudfunctions.net/perplexity-enrich"

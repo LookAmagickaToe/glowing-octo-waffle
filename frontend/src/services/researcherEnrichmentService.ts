@@ -7,6 +7,7 @@ import { Researcher, Paper } from '@/types';
 import * as semanticScholar from './semanticScholarService';
 import * as openAlex from './openAlexService';
 import * as orcid from './orcidService';
+import * as perplexity from './perplexityService';
 
 export interface SourceResult {
   found: boolean;
@@ -23,6 +24,7 @@ export interface EnrichmentResult {
   researcher: Researcher;
   sources: string[];
   details: {
+    perplexity: SourceResult;
     semanticScholar: SourceResult;
     openAlex: SourceResult;
     orcid: SourceResult;
@@ -217,10 +219,43 @@ export async function enrichResearcher(
 
   // Initialize details for each source
   const details: EnrichmentResult['details'] = {
+    perplexity: { found: false },
     semanticScholar: { found: false },
     openAlex: { found: false },
     orcid: { found: false },
   };
+
+  // Call Perplexity first as PRIMARY source for email and lab
+  onProgress?.('Searching for contact info via Perplexity...');
+  try {
+    const perplexityResult = await perplexity.enrichResearcher(
+      researcher.name,
+      researcher.affiliation
+    );
+
+    if (perplexityResult.success && perplexityResult.found) {
+      sources.push('Perplexity');
+      details.perplexity = {
+        found: true,
+        email: perplexityResult.email || undefined,
+        affiliation: perplexityResult.institution || undefined,
+      };
+
+      // Use Perplexity results as primary source
+      if (perplexityResult.email) {
+        enriched.email = perplexityResult.email;
+      }
+      if (perplexityResult.institution) {
+        enriched.affiliation = perplexityResult.institution;
+      }
+    }
+  } catch (err) {
+    console.error('Perplexity enrichment failed:', err);
+    details.perplexity = {
+      found: false,
+      error: err instanceof Error ? err.message : 'Unknown error',
+    };
+  }
 
   onProgress?.('Looking up researcher profiles...');
 
@@ -323,8 +358,18 @@ export async function enrichResearcher(
 /**
  * Quick lookup to try to find email for a researcher
  */
-export async function findResearcherEmail(name: string): Promise<string | null> {
-  // Try ORCID first (most likely to have email)
+export async function findResearcherEmail(name: string, affiliation?: string): Promise<string | null> {
+  // Try Perplexity first (primary source)
+  try {
+    const perplexityResult = await perplexity.enrichResearcher(name, affiliation);
+    if (perplexityResult.success && perplexityResult.email) {
+      return perplexityResult.email;
+    }
+  } catch (err) {
+    console.error('Perplexity email lookup failed:', err);
+  }
+
+  // Fallback to ORCID
   const orcidResult = await findInOrcid(name);
   if (orcidResult?.email) {
     return orcidResult.email;
