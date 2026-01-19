@@ -12,6 +12,10 @@ import { useToast } from '@/hooks/use-toast';
 
 const Settings = () => {
   const {
+    userName,
+    setUserName,
+    companyName,
+    setCompanyName,
     openaiApiKey,
     setOpenaiApiKey,
     geminiApiKey,
@@ -25,6 +29,9 @@ const Settings = () => {
   const [editingIntegration, setEditingIntegration] = useState<Integration | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isNewIntegration, setIsNewIntegration] = useState(false);
+  const [userNameInput, setUserNameInput] = useState(userName);
+  const [companyNameInput, setCompanyNameInput] = useState(companyName);
+  const [profileSaved, setProfileSaved] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState(openaiApiKey);
   const [showApiKey, setShowApiKey] = useState(false);
   const [apiKeySaved, setApiKeySaved] = useState(false);
@@ -68,6 +75,17 @@ const Settings = () => {
         description: `${integration.name} has been updated.`,
       });
     }
+  };
+
+  const handleSaveProfile = () => {
+    setUserName(userNameInput);
+    setCompanyName(companyNameInput);
+    setProfileSaved(true);
+    toast({
+      title: 'Profile Saved',
+      description: 'Your name and company have been saved.',
+    });
+    setTimeout(() => setProfileSaved(false), 2000);
   };
 
   const handleSaveApiKey = () => {
@@ -129,10 +147,56 @@ const Settings = () => {
       </div>
 
       <div className="p-6 space-y-6">
+        {/* Profile Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Profile</CardTitle>
+              <CardDescription>
+                Used in outreach emails
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Your Name</label>
+                  <Input
+                    value={userNameInput}
+                    onChange={(e) => setUserNameInput(e.target.value)}
+                    placeholder="Jane Doe"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Company Name</label>
+                  <Input
+                    value={companyNameInput}
+                    onChange={(e) => setCompanyNameInput(e.target.value)}
+                    placeholder="Acme Ventures"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  onClick={handleSaveProfile}
+                  disabled={userNameInput === userName && companyNameInput === companyName}
+                  className="gap-1"
+                >
+                  {profileSaved ? <Check className="w-4 h-4" /> : null}
+                  {profileSaved ? 'Saved' : 'Save'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
         {/* API Keys Section */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
         >
           <Card>
             <CardHeader>

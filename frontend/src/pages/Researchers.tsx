@@ -1,15 +1,20 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Users, Building2, FileText, Quote, ExternalLink, Loader2, Mail, Globe, Link2, LayoutGrid, Table, Network, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
-import { Researcher, GraphData, GraphNode, GraphLink } from '@/types';
+import { Researcher, GraphData, GraphNode, GraphLink, Paper } from '@/types';
 import { useResearchers } from '@/contexts/ResearchersContext';
+import { useSettings } from '@/contexts/SettingsContext';
+import { useToast } from '@/hooks/use-toast';
 import { enrichResearcher, EnrichmentResult } from '@/services/researcherEnrichmentService';
+import { createGeminiCompletion } from '@/services/llmClient';
 import * as semanticScholar from '@/services/semanticScholarService';
 import * as openAlex from '@/services/openAlexService';
+import ContactAuthorDialog from '@/components/ContactAuthorDialog';
+import { parseEmailDraft } from '@/utils/emailDrafting';
 
 type ViewMode = 'cards' | 'table';
 
@@ -585,6 +590,111 @@ interface ResearcherPopupProps {
 
 const ResearcherPopup = ({ researcher, onClose }: ResearcherPopupProps) => {
   const [showPublications, setShowPublications] = useState(false);
+  const [contactOpen, setContactOpen] = useState(false);
+  const [contactSubject, setContactSubject] = useState('');
+  const [contactBody, setContactBody] = useState('');
+  const [contactLoading, setContactLoading] = useState(false);
+  const [selectedPublication, setSelectedPublication] = useState<Paper | null>(null);
+  const { geminiApiKey, userName, companyName } = useSettings();
+  const { toast } = useToast();
+
+  const researcherSummary = useMemo(() => {
+    if (!researcher) return '';
+    const topPubs = researcher.publications?.slice(0, 3).map(pub => pub.title).filter(Boolean) || [];
+    const stats = [
+      researcher.affiliation ? `Affiliation: ${researcher.affiliation}` : null,
+      researcher.hIndex !== undefined ? `h-index: ${researcher.hIndex}` : null,
+      researcher.citations !== undefined ? `Citations: ${researcher.citations.toLocaleString()}` : null,
+      `Papers: ${researcher.publications?.length || researcher.papers.length || 0}`,
+    ].filter(Boolean);
+
+    return [
+      `${researcher.name} is a researcher.`,
+      ...stats,
+      topPubs.length > 0 ? `Selected publications: ${topPubs.join('; ')}` : null,
+    ].filter(Boolean).join(' ');
+  }, [researcher]);
+
+  const generateEmail = async (context: { type: 'researcher' | 'publication'; publication?: Paper }) => {
+    if (!geminiApiKey) {
+      toast({
+        title: 'Gemini API Key Required',
+        description: 'Please configure a Gemini API key in Settings to draft emails.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const senderName = userName?.trim() || 'Your Name';
+    const orgName = companyName?.trim() || 'X';
+    const systemPrompt = `You are an expert Technology Transfer Scout and Outreach Assistant.
+
+Your task is to draft a short, personalized, and professional outreach email to an academic researcher based on the summary or abstract of their research paper provided by the user.
+
+Your Goal:
+To initiate a conversation about the commercial potential of their work and explore whether they are interested in science-based entrepreneurship.
+
+Context:
+You are writing on behalf of "${orgName}" (a venture builder or tech transfer unit). You have identified their recent publication as having high translational potential—meaning it looks ripe for practical application or spin-off creation.
+
+Guidelines for the Email:
+1. Tone: Professional, respectful of academic rigor, yet forward-looking and business-oriented. Avoid sounding like a generic salesperson.
+2. Subject Line: Create a concise subject line that references their specific research topic or paper title.
+3. The Hook: Acknowledge their specific paper. Briefly explain why it stood out (e.g., its practical applicability, innovative approach to a specific problem).
+4. The Value Prop: Mention that "${orgName}" specializes in helping researchers translate scientific breakthroughs into real-world ventures.
+5. The Ask: Propose a brief, low-pressure introductory call to learn more about their future research plans.
+6. Constraint: You MUST use the organization name "${orgName}" and sign the email as "${senderName}" from "${orgName}".
+
+Output:
+Return JSON with "subject" and "body" only. No markdown or code fences.`;
+    const userPrompt = context.type === 'researcher'
+      ? `Write a short email to ${researcher?.name || 'the researcher'} based on this summary: ${researcherSummary}. Express interest in their work and request a brief call. Keep it friendly and concise. Return JSON with "subject" and "body".`
+      : `Write a short email to ${researcher?.name || 'the lead author'} about this paper. Title: "${context.publication?.title || 'Untitled'}". Abstract: "${context.publication?.abstract || 'No abstract available.'}". Express interest and ask for a brief discussion. Keep it concise. Return JSON with "subject" and "body".`;
+
+    setContactLoading(true);
+    try {
+      const draft = await createGeminiCompletion(
+        geminiApiKey,
+        [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        { temperature: 0.4, maxTokens: 500 }
+      );
+      const parsed = parseEmailDraft(draft);
+      setContactSubject(parsed.subject);
+      setContactBody(parsed.body);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to draft email.';
+      toast({ title: 'Email Draft Failed', description: message, variant: 'destructive' });
+    } finally {
+      setContactLoading(false);
+    }
+  };
+
+  const openResearcherContact = async () => {
+    setSelectedPublication(null);
+    setContactSubject('');
+    setContactBody('');
+    setContactOpen(true);
+    await generateEmail({ type: 'researcher' });
+  };
+
+  const openPublicationContact = async (publication: Paper) => {
+    setSelectedPublication(publication);
+    setContactSubject('');
+    setContactBody('');
+    setContactOpen(true);
+    await generateEmail({ type: 'publication', publication });
+  };
+
+  const handleSend = () => {
+    toast({
+      title: 'Email sent (mock)',
+      description: 'We will wire up delivery later.',
+    });
+    setContactOpen(false);
+  };
 
   return (
     <AnimatePresence>
@@ -620,6 +730,15 @@ const ResearcherPopup = ({ researcher, onClose }: ResearcherPopupProps) => {
                         {researcher.affiliation}
                       </p>
                     </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      onClick={openResearcherContact}
+                    >
+                      <Mail className="w-4 h-4" />
+                      Contact Author
+                    </Button>
                   </div>
 
                   {/* Contact Info */}
@@ -707,22 +826,36 @@ const ResearcherPopup = ({ researcher, onClose }: ResearcherPopupProps) => {
                                 className="p-2 bg-secondary/50 rounded text-xs"
                               >
                                 <p className="font-medium line-clamp-2">{pub.title}</p>
-                                <div className="flex items-center gap-2 mt-1 text-muted-foreground">
-                                  <span>{pub.year}</span>
-                                  {pub.citations !== undefined && (
-                                    <span>{pub.citations.toLocaleString()} citations</span>
-                                  )}
-                                  {pub.doi && (
-                                    <a
-                                      href={`https://doi.org/${pub.doi}`}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="hover:text-foreground"
-                                      onClick={(e) => e.stopPropagation()}
-                                    >
-                                      DOI ↗
-                                    </a>
-                                  )}
+                                <div className="flex items-end justify-between gap-2 mt-1">
+                                  <div className="flex items-center gap-2 text-muted-foreground">
+                                    <span>{pub.year}</span>
+                                    {pub.citations !== undefined && (
+                                      <span>{pub.citations.toLocaleString()} citations</span>
+                                    )}
+                                    {pub.doi && (
+                                      <a
+                                        href={`https://doi.org/${pub.doi}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="hover:text-foreground"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        DOI ↗
+                                      </a>
+                                    )}
+                                  </div>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 text-xs"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openPublicationContact(pub);
+                                    }}
+                                  >
+                                    <Mail className="w-3 h-3 mr-1" />
+                                    Contact Author
+                                  </Button>
                                 </div>
                               </div>
                             ))}
@@ -753,6 +886,18 @@ const ResearcherPopup = ({ researcher, onClose }: ResearcherPopupProps) => {
           </div>
         </>
       )}
+      <ContactAuthorDialog
+        open={contactOpen}
+        onOpenChange={setContactOpen}
+        title={selectedPublication ? 'Contact Author About This Paper' : 'Contact Author'}
+        description={selectedPublication ? selectedPublication.title : researcher?.name}
+        subject={contactSubject}
+        body={contactBody}
+        onSubjectChange={setContactSubject}
+        onBodyChange={setContactBody}
+        onSend={handleSend}
+        isLoading={contactLoading}
+      />
     </AnimatePresence>
   );
 };

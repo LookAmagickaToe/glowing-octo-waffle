@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, FileText, Calendar, Users, Quote, TrendingUp, Star, ExternalLink, AlertCircle, Filter, ChevronDown, ChevronUp, CheckCircle, XCircle, UserPlus, Info, Sparkles, X } from 'lucide-react';
+import { Search, FileText, Calendar, Users, Quote, TrendingUp, Star, ExternalLink, AlertCircle, Filter, ChevronDown, ChevronUp, CheckCircle, XCircle, UserPlus, Info, Sparkles, X, Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -8,11 +8,13 @@ import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Paper, MarketViability, Researcher } from '@/types';
 import { unifiedSearch } from '@/services/unifiedSearchService';
-import { analyzeMarketViability, suggestKeywords, KeywordSuggestion } from '@/services/llmClient';
+import { analyzeMarketViability, suggestKeywords, KeywordSuggestion, createGeminiCompletion } from '@/services/llmClient';
 import { useSearch } from '@/contexts/SearchContext';
 import { useSettings } from '@/contexts/SettingsContext';
 import { useResearchers } from '@/contexts/ResearchersContext';
 import { useToast } from '@/hooks/use-toast';
+import ContactAuthorDialog from '@/components/ContactAuthorDialog';
+import { parseEmailDraft } from '@/utils/emailDrafting';
 
 interface SearchFilters {
   yearFrom: string;
@@ -134,16 +136,15 @@ const SearchPapers = () => {
 
   const hasActiveFilters = filters.yearFrom || filters.yearTo || filters.minCitations;
 
-  // Extract unique authors from papers and add to Researchers DB
-  const handleAddToDb = () => {
-    if (state.results.length === 0) return;
+  const buildAuthorId = (authorName: string) =>
+    `author-${authorName.trim().toLowerCase().replace(/\s+/g, '-')}`;
 
-    // Extract unique authors from all papers
+  const buildResearchersFromPapers = (papers: Paper[]) => {
     const authorMap = new Map<string, Researcher>();
 
-    state.results.forEach(paper => {
+    papers.forEach(paper => {
       paper.authors.forEach(authorName => {
-        const authorId = `author-${authorName.replace(/\s+/g, '-').toLowerCase()}`;
+        const authorId = buildAuthorId(authorName);
 
         if (!authorMap.has(authorId)) {
           authorMap.set(authorId, {
@@ -153,7 +154,6 @@ const SearchPapers = () => {
             papers: [paper.id],
           });
         } else {
-          // Add paper to existing author
           const existing = authorMap.get(authorId)!;
           if (!existing.papers.includes(paper.id)) {
             existing.papers.push(paper.id);
@@ -162,7 +162,14 @@ const SearchPapers = () => {
       });
     });
 
-    const researchers = Array.from(authorMap.values());
+    return Array.from(authorMap.values());
+  };
+
+  // Extract unique authors from papers and add to Researchers DB
+  const handleAddToDb = () => {
+    if (state.results.length === 0) return;
+
+    const researchers = buildResearchersFromPapers(state.results);
     addResearchers(researchers);
     setAddedToDb(true);
 
@@ -443,13 +450,14 @@ const SearchPapers = () => {
         ) : state.results.length === 0 ? (
           <NoResults query={state.query} />
         ) : (
-          <SearchResults
-            results={state.results}
-            getViability={getViability}
-            setViability={setViability}
-            llmProvider={llmProvider}
-            llmApiKey={llmApiKey}
-          />
+            <SearchResults
+              results={state.results}
+              getViability={getViability}
+              setViability={setViability}
+              llmProvider={llmProvider}
+              llmApiKey={llmApiKey}
+              buildAuthorId={buildAuthorId}
+            />
         )}
       </div>
 
@@ -546,9 +554,10 @@ interface SearchResultsProps {
   setViability: (paperId: string, viability: MarketViability) => void;
   llmProvider: 'openai' | 'gemini' | null;
   llmApiKey: string;
+  buildAuthorId: (authorName: string) => string;
 }
 
-const SearchResults = ({ results, getViability, setViability, llmProvider, llmApiKey }: SearchResultsProps) => (
+const SearchResults = ({ results, getViability, setViability, llmProvider, llmApiKey, buildAuthorId }: SearchResultsProps) => (
   <div className="space-y-3">
     <AnimatePresence>
       {results.map((paper, index) => (
@@ -564,6 +573,7 @@ const SearchResults = ({ results, getViability, setViability, llmProvider, llmAp
             onViabilityCalculated={(v) => setViability(paper.id, v)}
             llmProvider={llmProvider}
             llmApiKey={llmApiKey}
+            buildAuthorId={buildAuthorId}
           />
         </motion.div>
       ))}
@@ -613,13 +623,31 @@ interface PaperCardProps {
   onViabilityCalculated: (viability: MarketViability) => void;
   llmProvider: 'openai' | 'gemini' | null;
   llmApiKey: string;
+  buildAuthorId: (authorName: string) => string;
 }
 
-const PaperCard = ({ paper, viability, onViabilityCalculated, llmProvider, llmApiKey }: PaperCardProps) => {
+const PaperCard = ({ paper, viability, onViabilityCalculated, llmProvider, llmApiKey, buildAuthorId }: PaperCardProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [showViability, setShowViability] = useState(!!viability);
   const [error, setError] = useState<string | null>(null);
+  const [contactOpen, setContactOpen] = useState(false);
+  const [contactSubject, setContactSubject] = useState('');
+  const [contactBody, setContactBody] = useState('');
+  const [contactLoading, setContactLoading] = useState(false);
   const { toast } = useToast();
+  const { geminiApiKey, userName, companyName } = useSettings();
+  const { state: researchersState, addResearchers } = useResearchers();
+
+  const leadAuthor = paper.authors[0];
+  const leadAuthorId = leadAuthor ? buildAuthorId(leadAuthor) : null;
+  const isLeadAuthorSaved = useMemo(() => {
+    if (!leadAuthor || !leadAuthorId) return false;
+    return researchersState.researchers.some(
+      researcher =>
+        researcher.id === leadAuthorId ||
+        researcher.name.toLowerCase() === leadAuthor.toLowerCase()
+    );
+  }, [leadAuthor, leadAuthorId, researchersState.researchers]);
 
   const handleMarketViability = async () => {
     if (viability) {
@@ -669,6 +697,94 @@ const PaperCard = ({ paper, viability, onViabilityCalculated, llmProvider, llmAp
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleAddLeadAuthor = () => {
+    if (!leadAuthor || !leadAuthorId || isLeadAuthorSaved) return;
+
+    addResearchers([
+      {
+        id: leadAuthorId,
+        name: leadAuthor,
+        affiliation: 'Unknown',
+        papers: [paper.id],
+      },
+    ]);
+
+    toast({
+      title: 'Author added',
+      description: `${leadAuthor} added to Researchers.`,
+    });
+  };
+
+  const handleContactAuthor = async () => {
+    setContactSubject('');
+    setContactBody('');
+    setContactOpen(true);
+
+    if (!geminiApiKey) {
+      toast({
+        title: 'Gemini API Key Required',
+        description: 'Please configure a Gemini API key in Settings to draft emails.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setContactLoading(true);
+    try {
+      const senderName = userName?.trim() || 'Your Name';
+      const orgName = companyName?.trim() || 'X';
+      const systemPrompt = `You are an expert Technology Transfer Scout and Outreach Assistant.
+
+Your task is to draft a short, personalized, and professional outreach email to an academic researcher based on the summary or abstract of their research paper provided by the user.
+
+Your Goal:
+To initiate a conversation about the commercial potential of their work and explore whether they are interested in science-based entrepreneurship.
+
+Context:
+You are writing on behalf of "${orgName}" (a venture builder or tech transfer unit). You have identified their recent publication as having high translational potential—meaning it looks ripe for practical application or spin-off creation.
+
+Guidelines for the Email:
+1. Tone: Professional, respectful of academic rigor, yet forward-looking and business-oriented. Avoid sounding like a generic salesperson.
+2. Subject Line: Create a concise subject line that references their specific research topic or paper title.
+3. The Hook: Acknowledge their specific paper. Briefly explain why it stood out (e.g., its practical applicability, innovative approach to a specific problem).
+4. The Value Prop: Mention that "${orgName}" specializes in helping researchers translate scientific breakthroughs into real-world ventures.
+5. The Ask: Propose a brief, low-pressure introductory call to learn more about their future research plans.
+6. Constraint: You MUST use the organization name "${orgName}" and sign the email as "${senderName}" from "${orgName}".
+
+Output:
+Return JSON with "subject" and "body" only. No markdown or code fences.`;
+      const userPrompt = `Write a short email to the lead author about this paper. Title: "${paper.title}". Abstract: "${paper.abstract || 'No abstract available.'}". Express interest and request a brief discussion. Keep it concise. Return JSON with "subject" and "body".`;
+      const draft = await createGeminiCompletion(
+        geminiApiKey,
+        [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        { temperature: 0.4, maxTokens: 500 }
+      );
+      const parsed = parseEmailDraft(draft);
+      setContactSubject(parsed.subject);
+      setContactBody(parsed.body);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to draft email';
+      toast({
+        title: 'Email Draft Failed',
+        description: message,
+        variant: 'destructive',
+      });
+    } finally {
+      setContactLoading(false);
+    }
+  };
+
+  const handleSend = () => {
+    toast({
+      title: 'Email sent (mock)',
+      description: 'We will wire up delivery later.',
+    });
+    setContactOpen(false);
   };
 
   return (
@@ -744,6 +860,25 @@ const PaperCard = ({ paper, viability, onViabilityCalculated, llmProvider, llmAp
               <TrendingUp className="w-3 h-3 mr-1" />
               {isLoading ? 'Analyzing...' : 'Market Viability'}
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleAddLeadAuthor}
+              disabled={!leadAuthor || isLeadAuthorSaved}
+              className="h-7 text-xs"
+            >
+              <UserPlus className="w-3 h-3 mr-1" />
+              {isLeadAuthorSaved ? 'Author Saved' : 'Add Author'}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleContactAuthor}
+              className="h-7 text-xs"
+            >
+              <Mail className="w-3 h-3 mr-1" />
+              Contact Author
+            </Button>
           </div>
         </div>
 
@@ -798,6 +933,18 @@ const PaperCard = ({ paper, viability, onViabilityCalculated, llmProvider, llmAp
           </div>
         )}
       </CardContent>
+      <ContactAuthorDialog
+        open={contactOpen}
+        onOpenChange={setContactOpen}
+        title="Contact Author"
+        description={paper.title}
+        subject={contactSubject}
+        body={contactBody}
+        onSubjectChange={setContactSubject}
+        onBodyChange={setContactBody}
+        onSend={handleSend}
+        isLoading={contactLoading}
+      />
     </Card>
   );
 };

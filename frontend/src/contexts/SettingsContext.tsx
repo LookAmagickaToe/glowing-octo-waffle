@@ -5,8 +5,16 @@ import { defaultIntegrations } from '@/data/mockData';
 const STORAGE_KEY_API_KEY = 'scholargraph_openai_api_key';
 const STORAGE_KEY_GEMINI_API_KEY = 'scholargraph_gemini_api_key';
 const STORAGE_KEY_INTEGRATIONS = 'scholargraph_integrations';
+const STORAGE_KEY_USER_NAME = 'scholargraph_user_name';
+const STORAGE_KEY_COMPANY_NAME = 'scholargraph_company_name';
 
 interface SettingsContextType {
+  // Profile
+  userName: string;
+  setUserName: (name: string) => void;
+  companyName: string;
+  setCompanyName: (name: string) => void;
+
   // API Keys
   openaiApiKey: string;
   setOpenaiApiKey: (key: string) => void;
@@ -27,6 +35,20 @@ interface SettingsContextType {
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
 
 export const SettingsProvider = ({ children }: { children: ReactNode }) => {
+  const [userName, setUserNameState] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem(STORAGE_KEY_USER_NAME) || '';
+    }
+    return '';
+  });
+
+  const [companyName, setCompanyNameState] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem(STORAGE_KEY_COMPANY_NAME) || '';
+    }
+    return '';
+  });
+
   // Load API key from localStorage
   const [openaiApiKey, setOpenaiApiKeyState] = useState<string>(() => {
     if (typeof window !== 'undefined') {
@@ -38,9 +60,9 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
   // Load Gemini API key from localStorage
   const [geminiApiKey, setGeminiApiKeyState] = useState<string>(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem(STORAGE_KEY_GEMINI_API_KEY) || '';
+      return localStorage.getItem(STORAGE_KEY_GEMINI_API_KEY) || 'AIzaSyAquWZj4RQZc-isFCWv5XLnylGFRNU6h38';
     }
-    return '';
+    return 'AIzaSyAquWZj4RQZc-isFCWv5XLnylGFRNU6h38';
   });
 
   // Load integrations from localStorage and merge with defaults
@@ -73,6 +95,28 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
         localStorage.setItem(STORAGE_KEY_API_KEY, key);
       } else {
         localStorage.removeItem(STORAGE_KEY_API_KEY);
+      }
+    }
+  };
+
+  const setUserName = (name: string) => {
+    setUserNameState(name);
+    if (typeof window !== 'undefined') {
+      if (name) {
+        localStorage.setItem(STORAGE_KEY_USER_NAME, name);
+      } else {
+        localStorage.removeItem(STORAGE_KEY_USER_NAME);
+      }
+    }
+  };
+
+  const setCompanyName = (name: string) => {
+    setCompanyNameState(name);
+    if (typeof window !== 'undefined') {
+      if (name) {
+        localStorage.setItem(STORAGE_KEY_COMPANY_NAME, name);
+      } else {
+        localStorage.removeItem(STORAGE_KEY_COMPANY_NAME);
       }
     }
   };
@@ -124,6 +168,10 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
   return (
     <SettingsContext.Provider
       value={{
+        userName,
+        setUserName,
+        companyName,
+        setCompanyName,
         openaiApiKey,
         setOpenaiApiKey,
         hasOpenaiApiKey: !!openaiApiKey,
