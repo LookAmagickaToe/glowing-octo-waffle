@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Users, Building2, FileText, Quote, ExternalLink, Loader2, Mail, Globe, Link2, LayoutGrid, Table, Network, Sparkles } from 'lucide-react';
+import { Search, Users, Building2, FileText, Quote, ExternalLink, Loader2, Mail, Globe, Link2, LayoutGrid, Table, Network, Sparkles, Plus, Pencil, Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -20,13 +20,15 @@ type ViewMode = 'cards' | 'table';
 
 const Researchers = () => {
   const navigate = useNavigate();
-  const { state, addResearchers, setSelectedResearcher } = useResearchers();
+  const { state, addResearchers, setSelectedResearcher, createList, renameList, setSelectedListId } = useResearchers();
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('cards');
   const [isEnriching, setIsEnriching] = useState(false);
   const [enrichmentProgress, setEnrichmentProgress] = useState({ current: 0, total: 0 });
+  const [editingListId, setEditingListId] = useState<string | null>(null);
+  const [editingListName, setEditingListName] = useState('');
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -91,11 +93,18 @@ const Researchers = () => {
     }
   };
 
-  // Filter researchers based on search query (for filtering existing list)
-  const filteredResearchers = state.researchers.filter(r =>
-    r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    r.affiliation.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const selectedList = state.selectedListId
+    ? state.lists.find(list => list.id === state.selectedListId) || null
+    : null;
+
+  // Filter researchers based on list selection and search query
+  const filteredResearchers = state.researchers.filter(r => {
+    if (selectedList && !selectedList.researcherIds.includes(r.id)) return false;
+    return (
+      r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      r.affiliation.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  });
 
   // Count unenriched researchers
   const unenrichedCount = state.researchers.filter(r => !r.enrichedAt).length;
@@ -282,6 +291,102 @@ const Researchers = () => {
 
       {/* Results Area */}
       <div className="flex-1 overflow-y-auto p-6 min-h-0">
+        {/* Lists Bar */}
+        <div className="flex items-center gap-2 mb-4">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="shrink-0"
+            onClick={() => {
+              const id = createList('New List');
+              setSelectedListId(id);
+              setEditingListId(id);
+              setEditingListName('New List');
+            }}
+          >
+            <Plus className="w-4 h-4" />
+          </Button>
+          <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap pb-1">
+            <Button
+              type="button"
+              variant={state.selectedListId === null ? 'secondary' : 'outline'}
+              size="sm"
+              onClick={() => setSelectedListId(null)}
+              className="shrink-0"
+            >
+              All
+            </Button>
+            {state.lists.map((list) => (
+              <div key={list.id} className="flex items-center gap-1 shrink-0">
+                {editingListId === list.id ? (
+                  <div className="flex items-center gap-1">
+                    <Input
+                      value={editingListName}
+                      onChange={(e) => setEditingListName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          renameList(list.id, editingListName);
+                          setEditingListId(null);
+                        }
+                        if (e.key === 'Escape') {
+                          setEditingListId(null);
+                        }
+                      }}
+                      onBlur={() => {
+                        renameList(list.id, editingListName);
+                        setEditingListId(null);
+                      }}
+                      className="h-8 w-36"
+                      autoFocus
+                    />
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => {
+                        renameList(list.id, editingListName);
+                        setEditingListId(null);
+                      }}
+                    >
+                      <Check className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => setEditingListId(null)}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <Button
+                      type="button"
+                      variant={state.selectedListId === list.id ? 'secondary' : 'outline'}
+                      size="sm"
+                      onClick={() => setSelectedListId(list.id)}
+                    >
+                      {list.name}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        setEditingListId(list.id);
+                        setEditingListName(list.name);
+                      }}
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </Button>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
         {state.researchers.length === 0 ? (
           <EmptyState />
         ) : viewMode === 'table' ? (

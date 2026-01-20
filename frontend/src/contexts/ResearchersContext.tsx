@@ -1,9 +1,11 @@
 import { createContext, useContext, useState, ReactNode } from 'react';
-import { Researcher } from '@/types';
+import { Researcher, ResearcherList } from '@/types';
 
 interface ResearchersState {
   researchers: Researcher[];
   selectedResearcher: Researcher | null;
+  lists: ResearcherList[];
+  selectedListId: string | null;
 }
 
 interface ResearchersContextType {
@@ -11,6 +13,10 @@ interface ResearchersContextType {
   addResearchers: (researchers: Researcher[]) => void;
   setSelectedResearcher: (researcher: Researcher | null) => void;
   clearResearchers: () => void;
+  createList: (name: string) => string;
+  renameList: (listId: string, name: string) => void;
+  setSelectedListId: (listId: string | null) => void;
+  addResearchersToList: (listId: string, researcherIds: string[]) => void;
 }
 
 const ResearchersContext = createContext<ResearchersContextType | undefined>(undefined);
@@ -19,6 +25,8 @@ export const ResearchersProvider = ({ children }: { children: ReactNode }) => {
   const [state, setState] = useState<ResearchersState>({
     researchers: [],
     selectedResearcher: null,
+    lists: [],
+    selectedListId: null,
   });
 
   const addResearchers = (newResearchers: Researcher[]) => {
@@ -46,11 +54,61 @@ export const ResearchersProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const clearResearchers = () => {
-    setState({ researchers: [], selectedResearcher: null });
+    setState(prev => ({
+      ...prev,
+      researchers: [],
+      selectedResearcher: null,
+      lists: prev.lists.map(list => ({ ...list, researcherIds: [] })),
+    }));
+  };
+
+  const createList = (name: string) => {
+    const id = `list-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setState(prev => ({
+      ...prev,
+      lists: [...prev.lists, { id, name, researcherIds: [] }],
+    }));
+    return id;
+  };
+
+  const renameList = (listId: string, name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setState(prev => ({
+      ...prev,
+      lists: prev.lists.map(list => (list.id === listId ? { ...list, name: trimmed } : list)),
+    }));
+  };
+
+  const setSelectedListId = (listId: string | null) => {
+    setState(prev => ({ ...prev, selectedListId: listId }));
+  };
+
+  const addResearchersToList = (listId: string, researcherIds: string[]) => {
+    setState(prev => ({
+      ...prev,
+      lists: prev.lists.map(list => {
+        if (list.id !== listId) return list;
+        const existing = new Set(list.researcherIds);
+        researcherIds.forEach(id => existing.add(id));
+        return { ...list, researcherIds: Array.from(existing) };
+      }),
+    }));
   };
 
   return (
-    <ResearchersContext.Provider value={{ state, addResearchers, setSelectedResearcher, clearResearchers }}>
+    <ResearchersContext.Provider
+      value={{
+        state,
+        addResearchers,
+        setSelectedResearcher,
+        clearResearchers,
+        createList,
+        renameList,
+        setSelectedListId,
+        addResearchersToList,
+      }}
+    >
       {children}
     </ResearchersContext.Provider>
   );

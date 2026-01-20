@@ -14,6 +14,7 @@ import { useSettings } from '@/contexts/SettingsContext';
 import { useResearchers } from '@/contexts/ResearchersContext';
 import { useToast } from '@/hooks/use-toast';
 import ContactAuthorDialog from '@/components/ContactAuthorDialog';
+import ResearcherListDialog from '@/components/ResearcherListDialog';
 import { parseEmailDraft } from '@/utils/emailDrafting';
 
 interface SearchFilters {
@@ -25,11 +26,15 @@ interface SearchFilters {
 const SearchPapers = () => {
   const { state, setQuery, setResults, setHasSearched, setViability, getViability } = useSearch();
   const { integrations, openaiApiKey, geminiApiKey } = useSettings();
-  const { addResearchers } = useResearchers();
+  const { state: researchersState, addResearchers, createList, addResearchersToList } = useResearchers();
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [addedToDb, setAddedToDb] = useState(false);
+  const [listDialogOpen, setListDialogOpen] = useState(false);
+  const [pendingResearchers, setPendingResearchers] = useState<Researcher[]>([]);
+  const [listDialogTitle, setListDialogTitle] = useState('Add to list');
+  const [listDialogDescription, setListDialogDescription] = useState<string | undefined>(undefined);
   const [filters, setFilters] = useState<SearchFilters>({
     yearFrom: '',
     yearTo: '',
@@ -170,11 +175,10 @@ const SearchPapers = () => {
     if (state.results.length === 0) return;
 
     const researchers = buildResearchersFromPapers(state.results);
-    addResearchers(researchers);
-    setAddedToDb(true);
-
-    // Reset after a few seconds
-    setTimeout(() => setAddedToDb(false), 3000);
+    setPendingResearchers(researchers);
+    setListDialogTitle('Add all authors to list');
+    setListDialogDescription('Choose a list to add all authors or leave unlisted.');
+    setListDialogOpen(true);
   };
 
   const handleSuggestionClick = (term: string) => {
@@ -505,13 +509,40 @@ const SearchPapers = () => {
               ) : (
                 <>
                   <UserPlus className="w-4 h-4" />
-                  Add Authors to DB
+                  Add all Authors to DB
                 </>
               )}
             </Button>
           </div>
         </motion.div>
       )}
+      <ResearcherListDialog
+        open={listDialogOpen}
+        onOpenChange={(open) => {
+          setListDialogOpen(open);
+          if (!open) {
+            setPendingResearchers([]);
+          }
+        }}
+        lists={researchersState.lists}
+        title={listDialogTitle}
+        description={listDialogDescription}
+        onCreateList={createList}
+        onConfirm={(listId) => {
+          if (pendingResearchers.length === 0) {
+            setListDialogOpen(false);
+            return;
+          }
+          addResearchers(pendingResearchers);
+          if (listId) {
+            addResearchersToList(listId, pendingResearchers.map(r => r.id));
+          }
+          setAddedToDb(true);
+          setTimeout(() => setAddedToDb(false), 3000);
+          setListDialogOpen(false);
+          setPendingResearchers([]);
+        }}
+      />
     </div>
   );
 };
@@ -636,7 +667,8 @@ const PaperCard = ({ paper, viability, onViabilityCalculated, llmProvider, llmAp
   const [contactLoading, setContactLoading] = useState(false);
   const { toast } = useToast();
   const { geminiApiKey, userName, companyName } = useSettings();
-  const { state: researchersState, addResearchers } = useResearchers();
+  const { state: researchersState, addResearchers, createList, addResearchersToList } = useResearchers();
+  const [listDialogOpen, setListDialogOpen] = useState(false);
 
   const leadAuthor = paper.authors[0];
   const leadAuthorId = leadAuthor ? buildAuthorId(leadAuthor) : null;
@@ -700,21 +732,8 @@ const PaperCard = ({ paper, viability, onViabilityCalculated, llmProvider, llmAp
   };
 
   const handleAddLeadAuthor = () => {
-    if (!leadAuthor || !leadAuthorId || isLeadAuthorSaved) return;
-
-    addResearchers([
-      {
-        id: leadAuthorId,
-        name: leadAuthor,
-        affiliation: 'Unknown',
-        papers: [paper.id],
-      },
-    ]);
-
-    toast({
-      title: 'Author added',
-      description: `${leadAuthor} added to Researchers.`,
-    });
+    if (!leadAuthor || !leadAuthorId) return;
+    setListDialogOpen(true);
   };
 
   const handleContactAuthor = async () => {
@@ -864,11 +883,11 @@ Return JSON with "subject" and "body" only. No markdown or code fences.`;
               variant="outline"
               size="sm"
               onClick={handleAddLeadAuthor}
-              disabled={!leadAuthor || isLeadAuthorSaved}
+              disabled={!leadAuthor}
               className="h-7 text-xs"
             >
               <UserPlus className="w-3 h-3 mr-1" />
-              {isLeadAuthorSaved ? 'Author Saved' : 'Add Author'}
+              {isLeadAuthorSaved ? 'Add to List' : 'Add Author'}
             </Button>
             <Button
               variant="outline"
@@ -944,6 +963,32 @@ Return JSON with "subject" and "body" only. No markdown or code fences.`;
         onBodyChange={setContactBody}
         onSend={handleSend}
         isLoading={contactLoading}
+      />
+      <ResearcherListDialog
+        open={listDialogOpen}
+        onOpenChange={setListDialogOpen}
+        lists={researchersState.lists}
+        title="Add author to list"
+        description={leadAuthor ? `Select a list for ${leadAuthor}.` : undefined}
+        onCreateList={createList}
+        onConfirm={(listId) => {
+          if (!leadAuthor || !leadAuthorId) return;
+          const researcher: Researcher = {
+            id: leadAuthorId,
+            name: leadAuthor,
+            affiliation: 'Unknown',
+            papers: [paper.id],
+          };
+          addResearchers([researcher]);
+          if (listId) {
+            addResearchersToList(listId, [researcher.id]);
+          }
+          toast({
+            title: 'Author added',
+            description: listId ? `${leadAuthor} added to list.` : `${leadAuthor} added to Researchers.`,
+          });
+          setListDialogOpen(false);
+        }}
       />
     </Card>
   );

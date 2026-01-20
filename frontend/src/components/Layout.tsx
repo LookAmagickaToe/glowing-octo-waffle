@@ -24,7 +24,7 @@ const Layout = ({ children }: LayoutProps) => {
       <aside className="w-64 border-r border-border flex flex-col">
         {/* Logo */}
         <div className="p-6 border-b border-border">
-          <h1 className="text-xl font-semibold tracking-tight">ScholarGraph</h1>
+          <h1 className="text-xl font-semibold tracking-tight">🪁 Catching Papers</h1>
           <p className="text-xs text-muted-foreground mt-1">Academic Discovery</p>
         </div>
 

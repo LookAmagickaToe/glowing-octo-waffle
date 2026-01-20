@@ -29,6 +29,12 @@ export interface Researcher {
   enrichedAt?: string;
 }
 
+export interface ResearcherList {
+  id: string;
+  name: string;
+  researcherIds: string[];
+}
+
 export interface Paper {
   id: string;
   title: string;
