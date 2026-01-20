@@ -11,7 +11,7 @@ const navItems = [
   { to: '/search', label: 'Search Papers', icon: FileText },
   { to: '/researchers', label: 'Researchers', icon: Users },
   { to: '/', label: 'Query', icon: MessageSquare },
-  { to: '/graph', label: 'Graph', icon: Network },
+  //{ to: '/graph', label: 'Graph', icon: Network },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 

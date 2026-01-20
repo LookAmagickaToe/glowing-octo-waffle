@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, FileText, Calendar, Users, Quote, TrendingUp, Star, ExternalLink, AlertCircle, Filter, ChevronDown, ChevronUp, CheckCircle, XCircle, UserPlus, Info, Sparkles, X, Mail } from 'lucide-react';
+import { Search, FileText, Calendar, Users, Quote, TrendingUp, Star, ExternalLink, AlertCircle, Filter, ChevronDown, ChevronUp, CheckCircle, XCircle, UserPlus, Info, Sparkles, X, Mail, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -12,10 +12,12 @@ import { analyzeMarketViability, suggestKeywords, KeywordSuggestion, createGemin
 import { useSearch } from '@/contexts/SearchContext';
 import { useSettings } from '@/contexts/SettingsContext';
 import { useResearchers } from '@/contexts/ResearchersContext';
+import { useQuery } from '@/contexts/QueryContext';
 import { useToast } from '@/hooks/use-toast';
 import ContactAuthorDialog from '@/components/ContactAuthorDialog';
 import ResearcherListDialog from '@/components/ResearcherListDialog';
 import { parseEmailDraft } from '@/utils/emailDrafting';
+import { useNavigate } from 'react-router-dom';
 
 interface SearchFilters {
   yearFrom: string;
@@ -669,6 +671,8 @@ const PaperCard = ({ paper, viability, onViabilityCalculated, llmProvider, llmAp
   const { geminiApiKey, userName, companyName } = useSettings();
   const { state: researchersState, addResearchers, createList, addResearchersToList } = useResearchers();
   const [listDialogOpen, setListDialogOpen] = useState(false);
+  const { startPaperChat } = useQuery();
+  const navigate = useNavigate();
 
   const leadAuthor = paper.authors[0];
   const leadAuthorId = leadAuthor ? buildAuthorId(leadAuthor) : null;
@@ -774,7 +778,8 @@ Guidelines for the Email:
 
 Output:
 Return JSON with "subject" and "body" only. No markdown or code fences.`;
-      const userPrompt = `Write a short email to the lead author about this paper. Title: "${paper.title}". Abstract: "${paper.abstract || 'No abstract available.'}". Express interest and request a brief discussion. Keep it concise. Return JSON with "subject" and "body".`;
+      const recipientName = leadAuthor || 'the lead author';
+      const userPrompt = `Write a short email to ${recipientName} about this paper. Title: "${paper.title}". Abstract: "${paper.abstract || 'No abstract available.'}". Address ${recipientName} by name. Express interest and request a brief discussion. Keep it concise. Return JSON with "subject" and "body".`;
       const draft = await createGeminiCompletion(
         geminiApiKey,
         [
@@ -869,6 +874,18 @@ Return JSON with "subject" and "body" only. No markdown or code fences.`;
                 View
               </a>
             )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                startPaperChat(paper);
+                navigate('/');
+              }}
+              className="h-7 text-xs"
+            >
+              <MessageSquare className="w-3 h-3 mr-1" />
+              Chat with AI
+            </Button>
             <Button
               variant="outline"
               size="sm"

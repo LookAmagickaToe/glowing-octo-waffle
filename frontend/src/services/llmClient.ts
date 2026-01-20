@@ -133,6 +133,7 @@ export async function createGeminiCompletion(
   return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 }
 
+
 /**
  * Test if the OpenAI API key is valid
  */

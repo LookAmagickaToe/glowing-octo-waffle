@@ -266,7 +266,7 @@ const Settings = () => {
                   <div className="relative flex-1">
                     <Input
                       type={showGeminiKey ? 'text' : 'password'}
-                      value={showGeminiKey ? geminiKeyInput : maskedGeminiKey}
+                      //value={showGeminiKey ? geminiKeyInput : maskedGeminiKey}
                       onChange={(e) => setGeminiKeyInput(e.target.value)}
                       onFocus={() => setShowGeminiKey(true)}
                       placeholder="AIza..."

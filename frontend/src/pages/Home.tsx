@@ -2,10 +2,28 @@ import { useState } from 'react';
 import ChatInterface from '@/components/ChatInterface';
 import { ChatMessage } from '@/types';
 import { useQuery } from '@/contexts/QueryContext';
+import { useSettings } from '@/contexts/SettingsContext';
+import { createChatCompletion, createGeminiCompletion } from '@/services/llmClient';
+import { useToast } from '@/hooks/use-toast';
 
 const Home = () => {
-  const { messages, addMessage } = useQuery();
+  const { messages, addMessage, contextPaper } = useQuery();
+  const { geminiApiKey, openaiApiKey } = useSettings();
+  const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+
+  const buildSystemPrompt = (paperTitle?: string, paperAbstract?: string) =>
+    paperTitle
+      ? `You are an expert research assistant. Answer questions using ONLY the provided paper context. If the PDF link cannot be accessed or the answer is not in the paper, say so clearly. Be concise and precise.\n\nPaper Title: ${paperTitle}\nPaper Abstract: ${paperAbstract || 'No abstract provided.'}`
+      : 'You are a helpful academic research assistant. Answer questions clearly and concisely.';
+
+  const buildHistory = (userContent: string) => {
+    const recent = messages.slice(-10).map((message) => ({
+      role: message.role,
+      content: message.content,
+    }));
+    return [...recent, { role: 'user' as const, content: userContent }];
+  };
 
   const handleSendMessage = async (content: string) => {
     const userMessage: ChatMessage = {
@@ -18,18 +36,48 @@ const Home = () => {
     addMessage(userMessage);
     setIsLoading(true);
 
-    // Simulate AI response
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    try {
+      const hasGemini = !!geminiApiKey;
+      const hasOpenAI = !!openaiApiKey;
 
-    const assistantMessage: ChatMessage = {
-      id: (Date.now() + 1).toString(),
-      role: 'assistant',
-      content: `I found several relevant papers related to "${content}". Here are some highlights:\n\n1. "Attention Is All You Need" (2017) - A foundational paper on transformer architecture with 85,000 citations.\n\n2. "BERT: Pre-training of Deep Bidirectional Transformers" (2018) - Introduces bidirectional training for language models.\n\n3. "Deep Residual Learning" (2015) - Revolutionary approach to training very deep networks.\n\nWould you like me to add these to your graph visualization?`,
-      timestamp: new Date(),
-    };
+      if (!hasGemini && !hasOpenAI) {
+        toast({
+          title: 'API Key Required',
+          description: 'Please configure a Gemini or OpenAI API key in Settings to chat.',
+          variant: 'destructive',
+        });
+        setIsLoading(false);
+        return;
+      }
 
-    addMessage(assistantMessage);
-    setIsLoading(false);
+      const systemPrompt = buildSystemPrompt(contextPaper?.title, contextPaper?.abstract);
+      const llmMessages = [
+        { role: 'system' as const, content: systemPrompt },
+        ...buildHistory(content),
+      ];
+
+      const response = hasGemini
+        ? await createGeminiCompletion(geminiApiKey, llmMessages, { temperature: 0.3, maxTokens: 800 })
+        : await createChatCompletion(openaiApiKey, llmMessages, { temperature: 0.3, maxTokens: 800 });
+
+      const assistantMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: response || 'I could not generate a response. Please try again.',
+        timestamp: new Date(),
+      };
+
+      addMessage(assistantMessage);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to generate response.';
+      toast({
+        title: 'Chat Failed',
+        description: message,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
